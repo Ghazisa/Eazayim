@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>مِعزَب الدعوات — أرشيف دعوات الزواج</title>
+
+  <!-- الخطوط: IBM Plex Sans Arabic لكل الواجهة، وهو الخط المعتمد للنص العربي هنا -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ملف التنسيق -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ═══════════ الترويسة ═══════════ -->
+  <header class="wrap">
+    <div class="brand">مِعزَب <span>الدعوات</span></div>
+    <p class="tagline">أرشيفك الأنيق لكل دعوات الزواج — أضِف، نظّم، ولا تفوّت مناسبة</p>
+    <div class="rule"></div>
+
+    <!-- الإحصائيات تتحدث من JavaScript حسب الدعوات المحفوظة -->
+    <div class="stats">
+      <div class="stat"><b id="stAll">٠</b><span>إجمالي الدعوات</span></div>
+      <div class="stat"><b id="stUp">٠</b><span>مناسبات قادمة</span></div>
+      <div class="stat"><b id="stWeek">٠</b><span>خلال أسبوع</span></div>
+    </div>
+
+    <!-- مربع البحث يفلتر الدعوات مباشرة بدون إعادة تحميل الصفحة -->
+    <div class="search">
+      <input id="q" type="search" placeholder="ابحث باسم العريس، الداعي، المدينة، أو القاعة…" aria-label="بحث">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
+
+    <!-- أدوات النسخ الاحتياطي والاستعادة تحفظ البيانات كملف JSON -->
+    <div class="tools">
+      <button class="tbtn" id="exportBtn">⬇ حفظ نسخة احتياطية</button>
+      <label class="tbtn">⬆ استعادة نسخة<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+    </div>
+
+    <!-- يظهر هذا التحذير فقط إذا لم يتم ضبط مفتاح الذكاء الاصطناعي في js/config.js -->
+    <div class="warn" id="keyWarn" style="display:none">
+      ⚠ لم يُضبط مفتاح API بعد — افتح <b>js/config.js</b> وضع مفتاحك في <b>ANTHROPIC_API_KEY</b> لتعمل القراءة التلقائية
+    </div>
+  </header>
+
+  <!-- ═══════════ قائمة الدعوات ═══════════ -->
+  <main class="wrap" id="list" aria-live="polite"></main>
+
+  <!-- زر الإضافة العائم: يفتح نافذة إضافة دعوة جديدة -->
+  <button class="fab" id="addBtn">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    إضافة دعوة
+  </button>
+
+  <!-- ═══════════ نافذة إضافة دعوة ═══════════ -->
+  <div class="sheet" id="addSheet" role="dialog" aria-modal="true" aria-label="إضافة دعوة جديدة">
+    <div class="panel">
+      <div class="grip"></div>
+      <h2>إضافة دعوة جديدة</h2>
+      <p class="sub">ارفع صورة الدعوة بأي خط أو تصميم — يمسحها الذكاء الاصطناعي ويعبّئ الحقول تلقائياً<br>وتبقى لك المراجعة قبل الحفظ</p>
+
+      <!-- منطقة الرفع: تقبل الضغط، السحب والإفلات، أو كاميرا الجوال -->
+      <div class="drop" id="drop">
+        <h3>ارفع أو صوّر الدعوة</h3>
+        <p>اضغط هنا أو اسحب الصورة وأفلتها — يدعم كاميرا الجوال</p>
+        <input type="file" id="file" accept="image/*">
+      </div>
+
+      <!-- خطوات المسح: JavaScript يغير حالة كل خطوة إلى on أو done أثناء المعالجة -->
+      <ul class="steps" id="steps">
+        <li id="s1"><span class="dot">١</span> استقبال الصورة ومعالجتها</li>
+        <li id="s2"><span class="dot">٢</span> مسح الدعوة واستخراج المعلومات</li>
+        <li id="s3"><span class="dot">٣</span> تعبئة الحقول تلقائياً</li>
+      </ul>
+      <div class="substep" id="subStep"></div>
+
+      <!-- رسالة نتيجة المسح: تظهر نجاح القراءة أو سبب الانتقال للإدخال اليدوي -->
+      <div class="ocr-msg" id="ocrMsg"></div>
+      <button type="button" class="btn ghost" id="retryOcr" style="display:none">🔁 إعادة محاولة المسح</button>
+
+      <!-- معاينة الصورة: تعرض النسخة المضغوطة التي ستُحفظ مع الدعوة -->
+      <img class="preview" id="preview" alt="معاينة الدعوة">
+
+      <!-- نموذج المراجعة: الحقول تتعبأ تلقائياً ثم يراجعها المستخدم قبل الحفظ -->
+      <form class="review" id="review">
+        <div class="fgrid">
+          <div class="fld full"><label for="fGroom">اسم الشاب (العريس) *</label><input id="fGroom" required placeholder="مثال: مازن بن عبدالله القارزي"></div>
+          <div class="fld full"><label for="fHost">الداعي</label><input id="fHost" placeholder="مثال: الشيخ عبدالرحمن القارزي وإخوانه"></div>
+          <div class="fld"><label for="fDay">اليوم والليلة</label>
+            <input id="fDay" list="days" placeholder="يوم الجمعة ليلة السبت">
+            <datalist id="days">
+              <option>يوم الخميس ليلة الجمعة</option><option>يوم الجمعة ليلة السبت</option>
+              <option>يوم السبت ليلة الأحد</option><option>يوم الأحد ليلة الإثنين</option>
+              <option>يوم الإثنين ليلة الثلاثاء</option><option>يوم الثلاثاء ليلة الأربعاء</option>
+              <option>يوم الأربعاء ليلة الخميس</option>
+            </datalist>
+          </div>
+          <div class="fld"><label for="fGreg">التاريخ الميلادي *</label><input id="fGreg" type="date" required></div>
+          <div class="fld full"><label for="fHijri">التاريخ الهجري</label><input id="fHijri" placeholder="مثال: ٣ صفر ١٤٤٨هـ"></div>
+          <div class="fld"><label for="fCity">المدينة / الحي</label><input id="fCity" placeholder="مكة المكرمة – الخضراء"></div>
+          <div class="fld"><label for="fHall">القاعة / القصر</label><input id="fHall" placeholder="قاعة البساتين"></div>
+          <div class="fld"><label for="fPhone">رقم الاستفسار</label><input id="fPhone" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right"></div>
+          <div class="fld"><label for="fNote">ملاحظة</label><input id="fNote" placeholder="العشاء الساعة ١٠:٣٠ مساءً"></div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost" id="cancelAdd">إلغاء</button>
+          <button type="submit" class="btn primary">حفظ الدعوة</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════════ نافذة تفاصيل الدعوة ═══════════ -->
+  <div class="sheet" id="viewSheet" role="dialog" aria-modal="true" aria-label="تفاصيل الدعوة">
+    <div class="panel">
+      <div class="grip"></div>
+      <div class="dcard">
+        <div class="dhead">
+          <div class="eyebrow">دعوة زواج الشاب</div>
+          <h3 id="vGroom"></h3>
+        </div>
+        <div class="rows">
+          <div class="row"><div class="ic">👥</div><div><div class="lb">الداعي</div><div class="vl" id="vHost"></div></div></div>
+          <div class="row"><div class="ic">🌙</div><div><div class="lb">يوم الزواج</div><div class="vl" id="vDay"></div></div></div>
+          <div class="row"><div class="ic">🗓️</div>
+            <div style="width:100%"><div class="lb">تاريخ الزواج</div>
+              <div class="chips">
+                <span class="chip"><b>هجري</b><span id="vHijri"></span></span>
+                <span class="chip"><b>ميلادي</b><span id="vGreg"></span></span>
+                <span class="chip"><b>المتبقي</b><span id="vLeft"></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="row"><div class="ic">📍</div><div><div class="lb">الموقع</div><div class="vl" id="vCity"></div></div></div>
+          <div class="row"><div class="ic">🏛️</div><div><div class="lb">القاعة</div><div class="vl" id="vHall"></div><div class="vl note" id="vNote"></div></div></div>
+          <div class="row"><div class="ic">📞</div><div><div class="lb">للاستفسار</div><div class="vl" id="vPhone" style="direction:ltr;text-align:right"></div></div></div>
+        </div>
+        <div class="dimg" id="vImgWrap"><img id="vImg" alt="صورة الدعوة الأصلية"></div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="closeView">إغلاق</button>
+        <button class="btn danger" id="delBtn">🗑 حذف الدعوة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- التنبيه العائم: رسائل قصيرة مثل نجاح الحفظ أو وجود خطأ -->
+  <div class="toast" id="toast"></div>
+
+  <footer>متوافق مع الكود السعودي الموحد · دعم كامل للعربية RTL</footer>
+
+  <!-- ═══════════ ملفات الجافاسكربت (بالترتيب) ═══════════
+       مهم: لا تغيّر الترتيب بسهولة.
+       config يجهز الإعدادات، utils يوفر الأدوات، storage يحفظ البيانات،
+       ocr يقرأ الدعوة، و app يربط كل شيء بالواجهة. -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
